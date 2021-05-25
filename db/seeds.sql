@@ -3,7 +3,8 @@ VALUES ('Management'),
   ('Sales'),
   ('Tech'),
   ('Human Resources'),
-  ('Accounting');
+  ('Accounting'),
+  ('Party Planning');
 INSERT INTO roles (title, salary, department_id)
 VALUES ('Manager', 200000, 1),
   ('Sales Associate', 65000, 2),
