@@ -1,65 +1,46 @@
 const inquirer = require('inquirer');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 const table = require('console.table');
-const menuOptions = ['View all Employees', 'View all Employees by Department', 'View all Employees by Manager', 'Add Employee', 'Remove Employee', 'Update Employee Role', 'View all Roles', 'Add Role', 'Remove Role', 'View all Departments', 'Add Department', 'Remove Department', 'Quit'];
-const allEmployeeQuery = 
-    `SELECT e.id, e.first_name AS "First Name", e.last_name AS "Last Name", r.title, d.department_name AS "Department", IFNULL(r.salary, 'No Data') AS "Salary", CONCAT(m.first_name," ",m.last_name) AS "Manager"
-    FROM employees e
-    LEFT JOIN roles r 
-    ON r.id = e.role_id 
-    LEFT JOIN departments d 
-    ON d.id = r.department_id
-    LEFT JOIN employees m ON m.id = e.manager_id
-    ORDER BY e.id;`
-
-const addEmployeeQuestions = ['What is the first name?', 'What is the last name?', 'What is their role?', 'Who is their manager?']
-const roleQuery = 'SELECT * from roles; SELECT CONCAT (e.first_name," ",e.last_name) AS full_name FROM employees e'
-const mgrQuery = 'SELECT CONCAT (e.first_name," ",e.last_name) AS full_name, r.title, d.department_name FROM employees e INNER JOIN roles r ON r.id = e.role_id INNER JOIN departments d ON d.id = r.department_id WHERE department_name = "Management";'
 
 // Create database connection
-const connection = mysql.createConnection({
+const connection = mysql.createPool({
   host: 'localhost',
-  port: 3306,
   user: 'root',
   password: 'SMokey11',
   database: 'employee_db'
 });
 
-connection.connect(err => {
-  if (err) throw err;
-  console.log("Connected as ID" + connection.threadId)
-});
+// connection.connect(err => {
+//   if (err) throw err;
+//   console.log("Connected as ID" + connection.threadId)
+// });
 
-const promptUser = () => {
-  return inquirer.prompt(
-    [
-      {
-        type: 'list',
-        name: 'menu',
-        message: 'Select an option:',
-        choices: menuOptions
-      }
-    ]
-  )
+function promptUser() {
+  return inquirer.prompt([
+    {
+      name: 'menu',
+      type: 'list',
+      message: 'Select an option:',
+      choices: [
+        'View all Employees',
+        'View all Roles',
+        'View all Departments',
+        'Add Employee',
+        'Update Employee Role',
+        'Add Role',
+        'Add Department',
+        'Quit'
+      ],
+      loop: false
+    }
+  ])
   .then(response => {
     if (response.menu === 'View all Employees') {
       allEmployees();
     }
-
-    if (response.menu === 'View all Employees by Department') {
-      showByDept();
-    }
-    
-    if (response.menu === 'View all Employees by Manager') {
-      showByManager();
-    }
     
     if (response.menu === 'Add Employee') {
       addEmployee();
-    }
-    
-    if (response.menu === 'Remove Employee') {
-      removeEmployee();
     }
 
     if (response.menu === 'Update Employee Role') {
@@ -74,10 +55,6 @@ const promptUser = () => {
       addRole();
     }
 
-    if (response.menu === 'Remove Role') {
-      removeRole();
-    }
-
     if (response.menu === 'View all Departments') {
       viewDept();
     }
@@ -86,57 +63,200 @@ const promptUser = () => {
       addDept();
     }
 
-    if (response.menu === 'Remove Department') {
-      removeDept();
-    }
-
     if (response.menu === 'Quit') {
       connection.end();
     }
   }) 
 };
 
-const allEmployees = () => {
-  connection.query(allEmployeeQuery, (err, results) => {
-    if (err) throw err;
-    console.log('=========');
-    console.table('All Employees', results)
-    promptUser();
-  })
+async function allEmployees() {
+  // Query to view employees
+  var query = `SELECT e.id, e.first_name, e.last_name, role.title AS Title, department.name AS Department, role.salary AS Salary, CONCAT(m.first_name,' ', m.last_name) AS Manager 
+    FROM employee e 
+    LEFT JOIN employee m ON e.manager_id = m.id 
+    LEFT JOIN role ON e.role_id=role.id 
+    LEFT JOIN department ON role.department_id=department.id`;
+  const [rows, fields] = await connection.query(query);
+  
+  console.table(rows);
+  
+  promptUser();
 };
 
-const showByDept = () => {
-  const deptQuery = 'SELECT * FROM departments';
-  connection.query(deptQuery, (err, results) => {
-    if (err) throw err;
-
-    inquirer.prompt([
+async function addEmployee() {
+  var arrChoices = await getRolesList();
+  var arrManager = await getManagerList();
+  return inquirer
+    .prompt([
       {
-        name: 'deptChoice',
-        type: 'list',
-        choices: function () {
-          let choiceArray = results.map(choice => choice.department_name);
-          return choiceArray;
-        },
-        message: 'Select a department to view:'
-      }
-    ]).then(response => {
-      let selectedDept;
-      for (let i = 0; i < results.length; i++) {
-        if (results[i].department_name === response.deptChoice) {
-          selectedDept = results[i];
-        }
-      }
+        name: "first_name",
+        type: "input",
+        message: "Enter new employee's first name:",
+      },
+      {
+        name: "last_name",
+        type: "input",
+        message: "Enter new employee's last name:",
+      },
+      {
+        name: "role",
+        type: "list",
+        message: "Select new employee's role:",
+        choices: arrChoices,
+      },
+      {
+        name: "manager",
+        type: "list",
+        message: "Assign a manager to new employee:",
+        choices: arrManager,
+      },
+    ])
+    .then(async function (res) {
+      // First get the id of the manager
+      var query = `SELECT id FROM employee WHERE first_name='${res.manager}'`;
+      const [rows, fields] = await connection.query(query);
+      query = `INSERT INTO employee (first_name,last_name,role_id,manager_id) 
+            values ('${res.first_name}','${res.last_name}',              
+            (SELECT id FROM role WHERE title='${res.role}'), '${rows[0].id}')`;
+      const [rows2, fields2] = await connection.query(query);
+      console.log('New employee has been added!');
 
-      const query = 'SELECT e.id, e.first_name AS "First Name", e.last_name AS "Last Name", r.title AS "Title", d.department_name AS "Department", r.salary AS "Salary" FROM employees e INNER JOIN roles r ON r.id = e.role_id INNER JOIN departments d ON d.id = r.department_id WHERE ?;';
-      conneciton.query(query, { department_name: selectedDept.department_name }, (err, res) => {
-        if (err) throw err;
-        console.log('=========');
-        console.table(`All Employees by Department: ${selectedDept.department_name}`, res);
-        promptUser();
-      });
+      promptUser();
     });
-  });
+};
+
+async function updateRole() {
+  var arrChoices = await getRolesList();
+  return inquirer
+    .prompt([
+      {
+        name: "first_name",
+        type: "input",
+        message: "Enter the employees first name:",
+      },
+      {
+        name: "last_name",
+        type: "input",
+        message: "Enter the employees last name:",
+      },
+      {
+        name: "role",
+        type: "list",
+        message: "Select a role for this employee:",
+        choices: arrChoices,
+      },
+    ])
+    .then(async function (res) {
+      var glbEmpId = 0;
+      // >>>> Query 1: Get the employee ID
+      var query = `SELECT id FROM employee WHERE first_name='${res.first_name}'
+                AND last_name='${res.last_name}'`;
+      const [rows, fields] = await connection.query(query);
+      glbEmpId = rows[0].id;
+      // >>>> Query 2: Get the role ID
+      query = `SELECT id FROM role WHERE title = '${res.role}'`;
+      const [rows2, fields2] = await connection.query(query);
+      // >>>> Query 3: Update the employee record
+      query = `UPDATE employee SET role_id = ${rows2[0].id} WHERE id=${glbEmpId}`;
+      const [rows3, fields3] = await connection.query(query);
+      console.log("Employee role has been updated!");
+      promptUser();
+    })
+};
+
+async function viewRoles() {
+   // Use query to bring the list of all departments
+   const [rows, fields] = await connection.query(
+    `SELECT role.title, role.id AS role_id, department.name AS Department, role.salary 
+     FROM role INNER JOIN department ON role.department_id = department.id ORDER BY role_id`
+  );
+  console.table(rows);
+  promptUser();
+};
+
+async function addRole() {
+  var arrChoices = await getDepartmentsList();
+  return inquirer
+    .prompt([
+      {
+        name: "title",
+        type: "input",
+        message: "Enter the title for this new role:",
+      },
+      {
+        name: "salary",
+        type: "input",
+        message: "Enter the salary for this role:",
+      },
+      {
+        name: "department",
+        type: "list",
+        message: "Select the department this role belongs to:",
+        choices: arrChoices,
+      },
+    ])
+    .then(async function (res) {
+      var query = `INSERT INTO role (title, salary, department_id)
+              VALUE ('${res.title}' , ${res.salary},
+             (SELECT id FROM department WHERE name='${res.department}'))`;
+      const [rows, fields] = await connection.query(query);
+      console.log("The new role has been added!");
+      promptUser();
+    });
+}
+
+async function viewDept() {
+  // Display list of all departments
+  const [rows, fields] = await connection.execute("SELECT * FROM department");
+  console.table(rows);
+  promptUser();
+}
+
+async function addDept() {
+  return inquirer
+    .prompt([
+      {
+        name: "name",
+        type: "input",
+        message: "Enter the name of the new department:",
+      },
+    ])
+    .then(async function (res) {
+      var query = `INSERT INTO department (name) VALUE ('${res.name}');`;
+      const [rows, fields] = await connection.query(query);
+      console.log("The new department has been added!");
+      promptUser();
+    });
+};
+
+async function getDepartmentsList() {
+  var arrResults = [];
+  var query = `SELECT name FROM department`;
+  const [rows, fields] = await connection.query(query);
+  for (var i = 0; i < rows.length; i++) {
+    arrResults.push(rows[i].name);
+  }
+  return arrResults;
+};
+
+async function getRolesList() {
+  var arrResults = [];
+  var query = `SELECT title FROM role`;
+  const [rows, fields] = await connection.query(query);
+  for (var i = 0; i < rows.length; i++) {
+    arrResults.push(rows[i].title);
+  }
+  return arrResults;
+};
+
+async function getManagerList() {
+  var arrResults = [];
+  var query = `SELECT first_name FROM employee`;
+  const [rows, fields] = await connection.query(query);
+  for (var i = 0; i < rows.length; i++) {
+    arrResults.push(rows[i].first_name);
+  }
+  return arrResults;
 };
 
 promptUser();

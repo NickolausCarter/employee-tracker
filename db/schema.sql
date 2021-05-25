@@ -1,23 +1,29 @@
-DROP DATABASE IF EXISTS employee_db;
-CREATE DATABASE employee_db;
-USE employee_db;
-CREATE TABLE departments(
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  department_name VARCHAR(30)
+DROP TABLE IF EXISTS employee;
+DROP TABLE IF EXISTS role;
+DROP TABLE IF EXISTS department;
+CREATE TABLE department (
+  id INTEGER NOT NULL AUTO_INCREMENT,
+  name VARCHAR(30) NOT NULL,
+  PRIMARY KEY (id)
 );
-CREATE TABLE roles(
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  title VARCHAR(30),
-  salary DECIMAL(8, 2),
-  department_id INT,
-  FOREIGN KEY(department_id) REFERENCES departments(id)
+CREATE TABLE role (
+  id INTEGER NOT NULL AUTO_INCREMENT,
+  title VARCHAR(30) NOT NULL,
+  salary decimal NOT NULL,
+  department_id INTEGER NOT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_department FOREIGN KEY (department_id) REFERENCES department(id)
+  /*ON DELETE SET NULL*/
 );
-CREATE TABLE employees(
-  id INT AUTO_INCREMENT PRIMARY KEY,
+CREATE TABLE employee (
+  id INTEGER NOT NULL AUTO_INCREMENT,
   first_name VARCHAR(30) NOT NULL,
   last_name VARCHAR(30) NOT NULL,
-  role_id INT,
-  manager_id INT,
-  FOREIGN KEY(role_id) REFERENCES roles(id),
-  FOREIGN KEY(manager_id) REFERENCES employees(id)
+  role_id integer,
+  manager_id integer,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_role FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE
+  SET NULL,
+    CONSTRAINT fk_manager FOREIGN KEY (manager_id) REFERENCES employee(id)
+    /*ON DELETE SET NULL*/
 );
